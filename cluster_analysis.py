@@ -97,6 +97,94 @@ def fp(n, d, decimals=1):
     return f'{round(v)}%' if decimals == 0 else f'{v:.{decimals}f}%'
 
 
+def build_cluster_lines(rows):
+    post_cat_sets = []
+    for row in rows:
+        eff_tier, cats = effective_tier_cats(
+            row.get('tier', ''),
+            row.get('categories', ''),
+            row.get('manual_category', ''),
+        )
+        if eff_tier == 'harassment':
+            known = [c for c in cats if c in DISPLAY_NAMES and c not in EXCLUDE_FROM_CLUSTERS]
+            seen = set()
+            deduped = []
+            for c in known:
+                if c not in seen:
+                    seen.add(c)
+                    deduped.append(c)
+            post_cat_sets.append(frozenset(deduped))
+
+    total_harassment = len(post_cat_sets)
+
+    cat_counts = Counter()
+    for s in post_cat_sets:
+        for c in s:
+            cat_counts[c] += 1
+
+    overlap_counts = {2: 0, 3: 0, '4+': 0}
+    for s in post_cat_sets:
+        n = len(s)
+        if n == 2:
+            overlap_counts[2] += 1
+        elif n == 3:
+            overlap_counts[3] += 1
+        elif n >= 4:
+            overlap_counts['4+'] += 1
+
+    pair_counts = Counter()
+    for s in post_cat_sets:
+        cats = sorted(s)
+        for a, b in combinations(cats, 2):
+            pair_counts[(a, b)] += 1
+
+    filtered_pairs = [(pair, cnt) for pair, cnt in pair_counts.items() if cnt >= 3]
+    filtered_pairs.sort(key=lambda x: -x[1])
+
+    combo_counts = Counter()
+    for s in post_cat_sets:
+        if len(s) >= 2:
+            ordered = sorted(s, key=lambda c: CATEGORY_ORDER.index(c) if c in CATEGORY_ORDER else 999)
+            label = ' + '.join(dn(c) for c in ordered)
+            combo_counts[label] += 1
+
+    top_combos = combo_counts.most_common(15)
+
+    lines = [
+        '### cluster analysis',
+        '#### multiple tags',
+        f'of {total_harassment} posts deemed harassment, {sum(overlap_counts.values())} hit multiple categories',
+        '',
+        '| # of tags | number | % of harassment posts |',
+        '|---|---|---|',
+        f'| exactly 2 | {overlap_counts[2]} | {fp(overlap_counts[2], total_harassment)} |',
+        f'| exactly 3 | {overlap_counts[3]} | {fp(overlap_counts[3], total_harassment)} |',
+        f'| 4 or more | {overlap_counts["4+"]} | {fp(overlap_counts["4+"], total_harassment)} |',
+        '#### co-occurrence matrix',
+        '_pairs that appear >3 times._',
+        '',
+        '| tag A | tag B | co-occurrences | % of A | % of B |',
+        '|---|---|---|---|---|',
+    ]
+
+    for (a, b), cnt in filtered_pairs:
+        pct_a = fp(cnt, cat_counts[a])
+        pct_b = fp(cnt, cat_counts[b])
+        lines.append(f'| {dn(a)} | {dn(b)} | {cnt} | {pct_a} | {pct_b} |')
+
+    lines += [
+        '',
+        '#### most common tag combinations',
+        '| Combination | Count | % of harassment |',
+        '|---|---|---|',
+    ]
+
+    for combo, cnt in top_combos:
+        lines.append(f'| {combo} | {cnt} | {fp(cnt, total_harassment)} |')
+
+    return lines
+
+
 def main():
     rows = read_rows()
 

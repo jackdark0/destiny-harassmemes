@@ -1,5 +1,6 @@
 import csv
 from collections import Counter
+from cluster_analysis import build_cluster_lines
 
 try:
     import pandas as pd
@@ -9,7 +10,7 @@ except ImportError:
 
 XLSX_FILE = 'classified_v3_csv.xlsx'
 CSV_FILE = 'classified_v3.csv'
-OUTPUT_FILE = 'harassment_summary.md'
+OUTPUT_FILE = r'C:\Users\User\Documents\research-memes\misc-cringe\harassment_sumary-jarvis.md'
 
 ORIGINAL_SOURCE = (
     'https://docs.google.com/document/d/e/'
@@ -29,13 +30,13 @@ DISPLAY_NAMES = {
     'homophobia':           'homophobia',
     'sexual_degradation':   'weird sex stuff',
     'ableist_slurs':        'ableism',
-    'antisemitism':         'antisemautism*',
+    'antisemitism':         'antisemautism',
     'stimulant_abuse':      'stimulant abuse',
     'relationship_mockery': 'relationship mockery',
     'family_attacks':       'family attacks',
     'sexism':               'sexism',
     'emasculation':         'emasculation',
-    'death_violence':       'minecraft / threats',
+    'death_violence':       'rope / threats',
     'antifan':              'antifan',
     'racism':               'racism',
     'gusano':               'gusano',
@@ -139,79 +140,46 @@ def main():
             tier_counts[eff_tier] += 1
         elif eff_tier == 'not_harassment':
             tier_counts['not_harassment'] += 1
+        elif eff_tier == 'borderline':
+            tier_counts['borderline'] += 1
         else:
-            # borderline, image_only, empty tier, unknown → not harassment
+            # image_only, empty tier, unknown → not harassment
             tier_counts['not_harassment'] += 1
 
     unique_accounts = len(handles)
     harassment_count = tier_counts['harassment']
     explicit_not_harassment_count = tier_counts['explicit_not_harassment']
     not_harassment_count = tier_counts['not_harassment'] - explicit_not_harassment_count
+    borderline_count = tier_counts['borderline']
     unclassified_count = tier_counts['unclassified']
     suspended_count = tier_counts['suspended']
     deleted_count = tier_counts['deleted']
-    suspended_deleted = suspended_count + deleted_count
-
     sorted_cats = sorted(
         [(cat, category_counts[cat]) for cat in CATEGORY_ORDER if category_counts[cat] > 0],
         key=lambda x: -x[1],
     )
 
     lines = [
-        "# a month's worth of hate:",
-        '',
-        f'[original source]({ORIGINAL_SOURCE})',
-        '',
-        '## overview',
-        '',
-        '|thing|number|',
+        '## results',
+        '### overview',
+        '|thing|number|%|',
         '|---|---|',
         f'|scraped posts|{total}|',
         f'|unique accounts|{unique_accounts} ({fp(unique_accounts, total, 0)})|',
-        f'|harassment|{harassment_count} ({fp(harassment_count, total)})|',
-        f'|suspended accounts / deleted posts|{suspended_deleted} ({fp(suspended_deleted, total)})|',
-        '',
-        '## progress-memes',
-        '',
-        '|type|amount|% of total|',
-        '|---|---|---|',
         f'|definitely harassment|{harassment_count}|{fp(harassment_count, total)}|',
+        f'|maybe harassment|{borderline_count}|{fp(borderline_count, total)}|',
         f'|definitely not harassment|{explicit_not_harassment_count}|{fp(explicit_not_harassment_count, total)}|',
-        f'|probably not harassment|{not_harassment_count}|{fp(not_harassment_count, total)}|',
-        f'|unclassified|{unclassified_count}|{fp(unclassified_count, total)}|',
-        f'|suspended|{suspended_count}|{fp(suspended_count, total)}|',
-        f'|deleted|{deleted_count}|{fp(deleted_count, total)}|',
-        '',
-        '## categories',
-        '',
-        f'_{harassment_count} total harassment posts \u00b7 {multi_cat_rows} hit multiple categories_',
-        '',
-        '|Category|Count|% of harassment|',
+        f'|probably not harassment / unclassified|{not_harassment_count + unclassified_count}|{fp(not_harassment_count + unclassified_count, total)}|',
+        f'|suspended / deleted|{suspended_count + deleted_count}|{fp(suspended_count + deleted_count, total)}|',
+        '### categories',
+        '|tag|#|%|',
         '|---|---|---|',
     ]
 
     for cat, count in sorted_cats:
         lines.append(f'|{DISPLAY_NAMES[cat]}|{count}|{fp(count, harassment_count, 0)}|')
 
-    lines += [
-        '',
-        '## bonus memes',
-        '',
-        '- dataset covers approximately one month of public harassment, excluding DMs.',
-        f'- {fp(unique_accounts, total, 0)} of accounts are unique.',
-        '',
-        '',
-        '## methodology',
-        '- vibe-coded a [python script](https://github.com/jackdark0/destiny-harassmemes/blob/main/scrape_tweets.py) to scrape the posts.',
-        '- also a second script to help classify them via keyword.',
-        '- manually reviewed anything not flagged; tried to add keywords but holy fucking AIDS.',
-        '- "court_memes" also includes generic pedo accusations.',
-        '- ',
-        '- "vague_insults" is an insanely broad catch-all "other" category for personal attacks that i don\'t think Steven cares about. attacks on appearance, career, intellect, food/movie takes, etc.',
-        '',
-        '## limitations',
-        '- manually reviewing everything is fucking cancer: some of it was done when i was tired; some of it was done while i argued with white nationalists. ',
-    ]
+    lines += build_cluster_lines(rows)
 
     output = '\n'.join(lines)
 
